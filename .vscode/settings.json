@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.json": "jsonc",
+        "stm32_lock.h": "c"
+    }
+}

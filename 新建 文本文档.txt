@@ -1,0 +1,84 @@
+# include "stdio.h"
+#include "main.h"
+#include "adc.h"
+#include "spi.h"
+#include "tim.h"
+#include "usart.h"
+#include "gpio.h"
+
+#include "my_function.h""
+int fputc(int ch, FILE *f)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, 0xFFFF);
+    return ch;
+}
+
+
+float encoder_speed_calculate(uint32_t encoder_count, float d)
+{
+    if (encoder_count < 10) //表示基本没动，那就认为速度是0
+        return 0.0f;
+    else
+        return encoder_count * d * 314.15926; //单位cm/s
+
+}
+
+float my_abs(float a)
+{
+    return a > 0 ? a : -a;
+}
+
+
+void PID_1_Init(MYPID mypid)
+{
+    mypid.err = mypid.err_last = mypid.err_next = mypid.integral = mypid.integral_flag = mypid.measure = mypid.out = mypid.target = 0;
+    mypid.kp = 0.0f;
+    mypid.ki = 0.0f;
+    mypid.kd = 0.0f;
+    mypid.integral_max = 0.0f;
+    mypid.out_max = 0.0f;
+}
+
+float PID_Calculate(MYPID MyPID, float measure, float target)
+{
+    float add;
+    MyPID.measure = measure;
+    MyPID.target = target;
+    MyPID.err = MyPID.target - MyPID.measure;
+#if 0
+    add = MyPID.kp * (MyPID.err - MyPID.err_next) + MyPID.ki * MyPID.err + MyPID.kd * (MyPID.err + MyPID.err_last - 2 * MyPID.err_next); //基础的增量式pid
+    MyPID.out += add;
+#else
+//积分分离+限幅的pid
+
+    MyPID.integral_flag = MyPID.err < MyPID.err_max ? 1 : 0;
+    MyPID.integral = MyPID.integral_flag * MyPID.ki * (MyPID.err + MyPID.err_next) / 2; /*括号是梯形积分*/ //积分分离
+    if (my_abs(MyPID.integral) > MyPID.integral_max)
+    {
+        MyPID.integral = MyPID.integral > 0 ? MyPID.integral_max : -MyPID.integral_max; //积分限幅
+    }
+
+    add = MyPID.kp * (MyPID.err - MyPID.err_next) + MyPID.integral + MyPID.kd * (MyPID.err + MyPID.err_last - 2 * MyPID.err_next);
+    MyPID.out += add;
+
+    if (my_abs(MyPID.out) > MyPID.out_max)
+    {
+        MyPID.out = MyPID.out > 0 ? MyPID.out_max : -MyPID.out_max; //输出限幅
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
