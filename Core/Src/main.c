@@ -369,7 +369,7 @@ rt_thread_init(&motion_control_thread,                  /* 线程控制块 */
             2,                            /* 线程的优先级 */      
             20);   
 
- rt_thread_startup(&motion_control_thread);
+rt_thread_startup(&motion_control_thread);
 
 /*************************************************************************************************************************************************/
 
