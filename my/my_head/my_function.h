@@ -46,7 +46,22 @@ typedef struct{
     float roll;
     float yaw;
     float Temp;
+<<<<<<< HEAD
 } mpu6050_DataType;
+=======
+} __attribute__((__packed__)) mpu6050_DataType;
+typedef struct{
+    
+    uint16_t pitch;
+    uint16_t roll;
+    uint16_t yaw;
+} __attribute__((__packed__)) jy901b_DataType;
+typedef union
+{
+	uint8_t byte[2*3];
+ jy901b_DataType st_data;
+}JY901B_DataType;
+>>>>>>> 7f156ef11760f83d9e75fbd35c23fb063992d790
 
 typedef union
 {
@@ -56,7 +71,12 @@ typedef union
 
 
 
+<<<<<<< HEAD
 typedef struct {
+=======
+typedef struct{
+    
+>>>>>>> 7f156ef11760f83d9e75fbd35c23fb063992d790
     float ch1;
     float ch2;
     float ch3;
