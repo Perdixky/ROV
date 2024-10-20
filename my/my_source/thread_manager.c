@@ -16,7 +16,6 @@
 
 
 
-
 float pitch_1, roll_1, yaw_1;           //欧拉角
 short aacx, aacy, aacz;         //加速度传感器原始数据
 short gyrox, gyroy, gyroz;      //陀螺仪原始数据
@@ -391,153 +390,180 @@ MS5837_DATATYPE ms5837;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+    uint8_t data = 0;
+    
+    // USART1 接收 PS2 数据
     if (huart->Instance == USART1)
     {
-        #if old
-        for (int i = 0; i < sizeof(rx_buf) / 2; i++)
+        static uint8_t rxState1 = 0;       /**< 接收状态机状态 */
+        static uint8_t dataLen1 = 0;       /**< 数据长度 */
+        static uint8_t dataCnt1 = 0;       /**< 数据计数 */
+        static uint8_t sum1 = 0;           /**< 校验和 */
+        static uint8_t rxBuffer1[256];     /**< 接收缓冲区 */
+        
+        // 获取接收到的字节
+        data = rxByte_USART1;
+        
+        switch (rxState1)
         {
-            if ((rx_buf[i] == 0xAA) && (rx_buf[i + 1] == 0x00))
-            {
-                head = rx_buf[i];
-                id = rx_buf[i + 1];
-                len = rx_buf[i + 2];
-                sum = head + id + len;
-
-                for (int j = 0; j < len; j++)
+            case 0: // 等待帧头
+                if (data == 0xAA)
                 {
-                    if ((j % 4) == 3)
-                    {
-                        sum += rx_buf[i + 3 + j];
-                    }
+                    rxState1 = 1;
+                    rxBuffer1[0] = data;
+                    sum1 = data;
                 }
-
-                if (sum == rx_buf[i + 3 + len])
+                break;
+            
+            case 1: // 接收 ID
+                rxBuffer1[1] = data;
+                sum1 += data;
+                if (data == 0x00)
                 {
-                    for (int k = 0; k < len; k++)
-                    {
-                        PS_2.byte[k] = rx_buf[i + 3 + k];
-                    }
-                    printf("ch1=%f,ch2=%f,ch3=%f,ch4=%f\n", PS_2.st_data.ch1, PS_2.st_data.ch2, PS_2.st_data.ch3, PS_2.st_data.ch4);
+                    rxState1 = 2;
                 }
                 else
                 {
-                    printf("4_error");
-                    break;
+                    rxState1 = 0; // 无效 ID，重置状态
                 }
-            }
-        }
-        HAL_UART_Receive_IT(&huart1, rx_buf, 140);
-        #else
-        static u8 _data_len = 0, _data_cnt = 0;
-        static u8 rxstate = 0;
-        u8 check = 1;
-        static u8 DT_RxBuffer[256];
-
-        HAL_UART_Receive_IT(&huart1, &data, 1);
-
-        if (rxstate == 0 && data == 0xAA)
-        {
-            rxstate = 1;
-            head = data;
-            sum += data;
-        }
-        else if (rxstate == 1 && (data == 0x00))
-        {
-            rxstate = 3;
-            id = data;
-            sum += data;
-        }
-        else if (rxstate == 3 && data < 250)
-        {
-            rxstate = 4;
-            len = data;
-            _data_len = data;
-            _data_cnt = 0;
-            sum += data;
-        }
-        else if (rxstate == 4 && _data_len > 0)
-        {
-            _data_len--;
-            DT_RxBuffer[_data_cnt++] = data;
-
-            if (_data_cnt % 4 == 0)
-            {
-                sum += data;
-            }
-
-            if (_data_len == 0)
-            {
-                rxstate = 5;
-            }
-        }
-        else if (rxstate == 5)
-        {
-            rxstate = 6;
-            check = data;
-        }
-        else if (rxstate == 6)
-        {
-            rxstate = 0;
-            if (sum == check)
-            {
-                for (int k = 0; k < len; k++)
+                break;
+            
+            case 2: // 接收数据长度
+                rxBuffer1[2] = data;
+                if (data < 250)
                 {
-                    PS_2.byte[k] = DT_RxBuffer[k];
+                    dataLen1 = data;
+                    dataCnt1 = 0;
+                    sum1 += data;
+                    rxState1 = 3;
                 }
-            }
-            else
-            {
-                printf("error");
-            }
-            sum = 0;
+                else
+                {
+                    rxState1 = 0; // 无效长度，重置状态
+                }
+                break;
+            
+            case 3: // 接收数据
+                rxBuffer1[3 + dataCnt1++] = data;
+                if ((dataCnt1 % 4) == 3) // 每接收4个字节中的第4个字节
+                {
+                    sum1 += data;
+                }
+                if (--dataLen1 == 0)
+                {
+                    rxState1 = 4;
+                }
+                break;
+            
+            case 4: // 接收校验字节
+                rxBuffer1[3 + dataCnt1] = data;
+                rxState1 = 0; // 重置状态
+                if (sum1 == data) // 校验和匹配
+                {
+                    // 将接收到的数据填充到 PS2Data 结构体
+                    memcpy(&ps2Data.channel1, &rxBuffer1[3], sizeof(float));
+                    memcpy(&ps2Data.channel2, &rxBuffer1[7], sizeof(float));
+                    memcpy(&ps2Data.channel3, &rxBuffer1[11], sizeof(float));
+                    memcpy(&ps2Data.channel4, &rxBuffer1[15], sizeof(float));
+                    // 根据需要继续填充其他字段
+                    
+                    printf("ch1=%.2f, ch2=%.2f, ch3=%.2f, ch4=%.2f\n", 
+                           ps2Data.channel1, ps2Data.channel2, ps2Data.channel3, ps2Data.channel4);
+                }
+                else
+                {
+                    printf("USART1 校验错误\n");
+                }
+                sum1 = 0; // 重置校验和
+                break;
+            
+            default:
+                rxState1 = 0; // 重置状态
+                break;
         }
-        else
-        {
-            rxstate = 0;
-        }
-        #endif
+        
+        // 重新启动 UART1 的接收中断
+        HAL_UART_Receive_IT(&huart1, &rxByte_USART1, 1);
     }
-
-    if (huart->Instance == UART5)
+    
+    // UART5 接收 MS5837 数据
+    else if (huart->Instance == UART5)
     {
-        static u8 _data_len = 0, _cnt = 0;
-        static u8 rx_state = 0;
-
-        if (rx_state == 0 && data == 0xAB)
+        static uint8_t rxState5 = 0;       /**< 接收状态机状态 */
+        static uint8_t dataCnt5 = 0;       /**< 数据计数 */
+        static uint8_t rxBuffer5[256];     /**< 接收缓冲区 */
+        
+        // 获取接收到的字节
+        data = rxByte_UART5;
+        
+        switch (rxState5)
         {
-            rx_state = 1;
-            head = data;
+            case 0: // 等待帧头
+                if (data == 0xAB)
+                {
+                    rxState5 = 1;
+                    rxBuffer5[0] = data;
+                }
+                break;
+            
+            case 1: // 接收 ID
+                rxBuffer5[1] = data;
+                if (data == 0x01)
+                {
+                    rxState5 = 2;
+                }
+                else
+                {
+                    rxState5 = 0; // 无效 ID，重置状态
+                }
+                break;
+            
+            case 2: // 接收数据
+                rxBuffer5[2 + dataCnt5++] = data;
+                if (dataCnt5 >= sizeof(MS5837Data))
+                {
+                    // 将接收到的数据填充到 MS5837Data 结构体
+                    memcpy(&ms5837Data.pressure, &rxBuffer5[2], sizeof(float));
+                    memcpy(&ms5837Data.water_temperature, &rxBuffer5[6], sizeof(float));
+                    
+                    printf("Pressure=%.2f, Water Temp=%.2f\n", 
+                           ms5837Data.pressure, ms5837Data.water_temperature);
+                    
+                    rxState5 = 0; // 重置状态
+                    dataCnt5 = 0;
+                }
+                break;
+            
+            default:
+                rxState5 = 0; // 重置状态
+                break;
         }
-        else if (rx_state == 1 && (data == 0x01))
-        {
-            rx_state = 2;
-            id = data;
-        }
-        else if (rx_state == 2)
-        {
-            ms5837.byte[_cnt++] = data;
-            if (_cnt >= 8)
-            {
-                _cnt = 0;
-                rx_state = 0;
-            }
-        }
-        else
-        {
-            rx_state = 0;
-        }
-
-        HAL_UART_Receive_IT(&huart5, &data, 1);
+        
+        // 重新启动 UART5 的接收中断
+        HAL_UART_Receive_IT(&huart5, &rxByte_UART5, 1);
     }
-
-    if (huart->Instance == UART4)
+    
+    // UART4 接收 Sound 数据
+    else if (huart->Instance == UART4)
     {
-        sound_rx_buf[sound_i++] = sound_buf;
-        if (sound_i > 8)
+        static uint8_t dataCnt4 = 0;       /**< 数据计数 */
+        static uint8_t rxBuffer4[4];       /**< 接收缓冲区，假设 SoundData 只有一个 float */
+        
+        // 获取接收到的字节
+        data = rxByte_UART4;
+        
+        rxBuffer4[dataCnt4++] = data;
+        if (dataCnt4 >= sizeof(SoundData))
         {
-            sound_i = 0;
+            // 将接收到的数据填充到 SoundData 结构体
+            memcpy(&soundData.distance, rxBuffer4, sizeof(float));
+            
+            printf("Distance=%.2f\n", soundData.distance);
+            
+            dataCnt4 = 0; // 重置计数
         }
-        HAL_UART_Receive_IT(&huart4, &sound_buf, 1);
+        
+        // 重新启动 UART4 的接收中断
+        HAL_UART_Receive_IT(&huart4, &rxByte_UART4, 1);
     }
 }
-
