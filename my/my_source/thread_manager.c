@@ -430,7 +430,7 @@ void motion_control_thread_entry(void *parameter)
 		
 		
 		
-				__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1500);
+		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1500);
 		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1499);
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1498);
     __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1497);
@@ -684,12 +684,12 @@ HAL_UART_Receive_IT(&huart1, &data, 1);
         HAL_UART_Receive_IT(&huart4, &sound_buf, 1);
     }
 		
-		if (huart->Instance == UART5)
+		if (huart->Instance == UART5)//jy901b数据的接收
     {
         static u8 _data_len = 0, _cnt = 0;
         static u8 rx_state = 0;
 
-        if (rx_state == 0 && data == 0x55)
+        if (rx_state == 0 && data == 0x55)//帧头是0x55
         {
             rx_state = 1;
             head = data;

@@ -66,10 +66,6 @@ mpu6050_DataType st_data;
 
 typedef struct{
     
-
-   
-
- 
     float ch1;
     float ch2;
     float ch3;

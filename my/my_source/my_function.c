@@ -309,11 +309,6 @@ static void Add_Send_Data(u8 ID, u8 Tx_buffer[])
 
     switch (ID)
     {
-
-
-
-
-
     case 0x01:
         num++;
         for (len = 0; len < 16; len++)
@@ -358,7 +353,7 @@ static void Add_Send_Data(u8 ID, u8 Tx_buffer[])
 //printf("sum=%d",sum);
         }
         break;
-				 case 0x05:
+				 case 0x05://0x05就是jy901b的数据
         num++;
         for (len = 0; len < 5; len++)
         {
