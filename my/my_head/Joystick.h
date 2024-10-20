@@ -16,6 +16,11 @@ typedef struct
     int Y;
 } JoystickDataType;
 
-JoystickDataType phraseJoystickData(unsigned char *data)
+JoystickDataType phraseJoystickData(const unsigned char data)
 {
+    static unsigned char status = 0;
+    static JoystickDataType joystickData;
+    if (data == 0xAA)
+    {
+    }
 }

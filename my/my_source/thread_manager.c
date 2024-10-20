@@ -11,185 +11,166 @@
 #include "my_adc.h"
 #include "motion_control.h"
 
+// 全局变量，用于存储MPU6050数据
+float pitch_1, roll_1, yaw_1;           // 俯仰角、横滚角、偏航角
+short aacx, aacy, aacz;                 // 加速度计数据
+short gyrox, gyroy, gyroz;              // 陀螺仪数据
+float temp;                             // 温度
 
+extern uint16_t IIC_SCL_PIN;            // I2C SCL引脚
+extern uint16_t IIC_SDA_PIN;            // I2C SDA引脚
 
-float pitch_1, roll_1, yaw_1;           //?????
-short aacx, aacy, aacz;         //????????????????
-short gyrox, gyroy, gyroz;      //????????????
-float temp;                     //???
-extern uint16_t IIC_SCL_PIN;
-extern uint16_t IIC_SDA_PIN;
-JY901B_DataType jy901b;
+JY901B_DataType jy901b;                 // JY901B传感器数据类型
+
+// 限制值的函数，限制范围在600到2400之间
 void my_limit(float *p)
 {
-if(*p>2400)
-*p=2400;
-else if(*p<600)
-*p=600;
+    if(*p > 2400)
+        *p = 2400;
+    else if(*p < 600)
+        *p = 600;
 }
 
-
-
-uint8_t procese_buf[50];//?????????
+uint8_t procese_buf[50];    // 数据处理缓冲区
 uint8_t buf;
 uint8_t sound_buf;
 
-//**************************************???1********************************/
+//************************************** 线程1: LED闪烁 ********************************/
 void led1_thread_entry(void *parameter)
 {
     while (1)
     {
+        rt_thread_delay(500);   /* 延迟500个tick */
 
-        rt_thread_delay(500);   /* ???500??tick */
-
-//        HAL_GPIO_WritePin(GPIOA,GPIO_PIN_15,GPIO_PIN_SET);
+        // 点亮连接在GPIOB引脚4的LED
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
-        rt_thread_delay(500);   /* ???500??tick */
+
+        rt_thread_delay(500);   /* 延迟500个tick */
+
+        // 熄灭连接在GPIOB引脚4的LED
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);
-//        HAL_GPIO_WritePin(GPIOA,GPIO_PIN_15,GPIO_PIN_RESET);
     }
 }
 
-
-
-
-//**************************************???2********************************/
+//************************************** 线程2: MPU6050传感器 ********************************/
 MPU6050DATATYPE mpu6050;
-
 
 void mpu6050_thread_entry(void *parameter)
 {
-
+    // 创建一个名为“my_queue”的消息队列
     rt_mq_t queue = rt_mq_create("my_queue", sizeof(float), 10, RT_IPC_FLAG_FIFO);
     if (queue == RT_NULL)
     {
-        printf("Failed to create message queue!\n");
-        rt_thread_delay(500);   /* ???500??tick */
-
+        printf("消息队列创建失败！\n");
+        rt_thread_delay(500);   /* 延迟500个tick */
     }
-    IIC_SCL_PIN =     SCL_1_Pin;
-    IIC_SDA_PIN =     SDA_1_Pin;
-		while(MPU_Init()+mpu_dmp_init()!=0)
-//    uint8_t a = MPU_Init();         //MPU6050?????
-//    int b = mpu_dmp_init();     //dmp?????
-//printf("b=%d",b);
-    rt_thread_delay(500);   /* ???500??tick */
+
+    // 设置MPU6050的I2C引脚
+    IIC_SCL_PIN = SCL_1_Pin;
+    IIC_SDA_PIN = SDA_1_Pin;
+
+    // 初始化MPU6050和DMP（数字运动处理器）
+    while (MPU_Init() + mpu_dmp_init() != 0)
+        rt_thread_delay(500);   /* 延迟500个tick */
 
     while (1)
     {
+        // 使用DMP获取MPU6050的数据
+        while (mpu_dmp_get_data(&roll_1, &pitch_1, &yaw_1)); // 不断获取数据，直到成功
 
-
-//        HAL_GPIO_WritePin(GPIOA, GPIO_PIN_15, GPIO_PIN_SET);
-        while (mpu_dmp_get_data(&roll_1, &pitch_1, &yaw_1)); //???????while??????????????
-//        mpu6050.st_data.pitch =  jy901b.byte[0];
-//        mpu6050.st_data.roll = roll_1;
-//        mpu6050.st_data.yaw = yaw_1;
-				mpu6050.st_data.pitch =  ((jy901b.byte[1]<<8)|jy901b.byte[0])/32768*180;
-        mpu6050.st_data.roll = ((jy901b.byte[1]<<8)|jy901b.byte[0])/32768*180;
-        mpu6050.st_data.yaw = ((jy901b.byte[1]<<8)|jy901b.byte[0])/32768*180;
+        // 将原始数据转换为角度（度数）
+        mpu6050.st_data.pitch = ((jy901b.byte[1] << 8) | jy901b.byte[0]) / 32768 * 180;
+        mpu6050.st_data.roll = ((jy901b.byte[1] << 8) | jy901b.byte[0]) / 32768 * 180;
+        mpu6050.st_data.yaw = ((jy901b.byte[1] << 8) | jy901b.byte[0]) / 32768 * 180;
         mpu6050.st_data.Temp = temp / 100;
-        MPU_Get_Accelerometer(&aacx, &aacy, &aacz);     //?????????????????
-        MPU_Get_Gyroscope(&gyrox, &gyroy, &gyroz);      //?????????????
-        temp = MPU_Get_Temperature();                   //?????????
-//        printf("mpu1??X:%.1f??  Y:%.1f??  Z:%.1f??  %.2f??C\r\n",roll_1,pitch_1,yaw_1,temp/100);//????1?????????
-//   rt_thread_delay(50);   /* ???500??tick */
-//        HAL_GPIO_WritePin(GPIOA,GPIO_PIN_15,GPIO_PIN_RESET);
-//   rt_thread_delay(50);   /* ???500??tick */
-        rt_thread_delay(50);   /* ???500??tick */
 
+        // 获取加速度计和陀螺仪数据
+        MPU_Get_Accelerometer(&aacx, &aacy, &aacz);
+        MPU_Get_Gyroscope(&gyrox, &gyroy, &gyroz);
 
+        // 获取温度
+        temp = MPU_Get_Temperature();
 
-
+        rt_thread_delay(50);   /* 延迟50个tick */
     }
 }
 
-\
-
-//**************************************???3********************************/
+//************************************** 线程3: MS5837传感器 ********************************/
 void MS5837_thread_entry(void *parameter)
 {
     while (1)
     {
-//        IIC_SCL_PIN =     MS5837_SCL_Pin;
-//        IIC_SDA_PIN =     MS5837_SDA_Pin;
-        MS5837_30BA_ReSet();                                                    //??λMS5837
+        // 重置MS5837传感器
+        MS5837_30BA_ReSet();
         rt_thread_mdelay(20);
 
-        MS5837_30BA_PROM();                                                     //?????MS5837
+        // 读取校准数据
+        MS5837_30BA_PROM();
         rt_thread_mdelay(20);
-        if (!MS5837_30BA_Crc4())                                              //CRCУ??
+
+        // 进行CRC校验
+        if (!MS5837_30BA_Crc4())
         {
-            printf("  ????????\r\n");
-            printf("  ?????????????\r\n");
-
+            printf("  CRC校验失败\r\n");
+            printf("  重新初始化MS5837传感器\r\n");
         }
         else
         {
-            printf("  ????????\r\n");
-            printf("  ???MS5837_30BA\r\n\r\n");
+            printf("  CRC校验通过\r\n");
+            printf("  MS5837_30BA传感器已初始化\r\n\r\n");
             break;
         }
-
     }
 
     while (1)
     {
-        MS5837_30BA_GetData();                                      //???????
+        // 从MS5837传感器获取数据
+        MS5837_30BA_GetData();
         rt_thread_mdelay(200);
-        printf("  Welcome to BlueRobots Community! \r\n");          //?????????????
-        printf("  Temperature : %.2f C \r\n", Temperature);         //?????????????
-        printf("  Pressure : %u mBar \r\n\r\n\r\n", Pressure);      //?????????????
 
-
+        // 打印传感器数据
+        printf("  欢迎来到BlueRobots社区！\r\n");
+        printf("  温度: %.2f C \r\n", Temperature);
+        printf("  压力: %u mBar \r\n\r\n\r\n", Pressure);
     }
 }
 
-
-//**************************************???4********************************/
+//************************************** 线程4: 数据接收 ********************************/
 uint8_t buf;
 uint8_t len, head, tail, id;
 extern UART_HandleTypeDef huart2;
 ps2DATATYPE PS_2;
 
-//uint8_t rx_buf[100]={0xAA,0X02,0X10,0X00,0X00,0X00,0X00,   0XCD,0XCC,0X8C,0X3F,    0XCD,0XCC,0X0C,0X40,  0X33,0X33,0X53,0X40, 0X7B};//????????????
 uint8_t rx_buf[100];
-uint8_t data=0;
+uint8_t data = 0;
+
 void data_receive_thread_entry(void *parameter)
 {
-//HAL_UART_Receive_IT(&huart1, rx_buf, 140);
-
-
     while (1)
     {
-			#if old
-			HAL_UART_Receive_IT(&huart1, rx_buf, 140);
-			#else
-						HAL_UART_Receive_IT(&huart1, &data, 1);
-			#endif
-//rt_interrupt_enter();
-
-//rt_interrupt_leave();
-
+        #if old
+            // 使用中断接收140字节数据，通过UART1
+            HAL_UART_Receive_IT(&huart1, rx_buf, 140);
+        #else
+            // 使用中断接收一个字节数据，通过UART1
+            HAL_UART_Receive_IT(&huart1, &data, 1);
+        #endif
 
         rt_thread_mdelay(20);
-
     }
 }
 
-
-//**************************************???5********************************/
+//************************************** 线程5: 数据发送 ********************************/
 void SendData_thread_entry(void *parameter)
 {
     while (1)
     {
-
-        Send_Data_Task();
+        Send_Data_Task(); // 数据发送任务
         rt_thread_mdelay(5);
-
     }
 }
 
-//**************************************???6????????********************************/
+//************************************** 线程6: 超声波传感器 ********************************/
 uint8_t enable = 1;
 
 uint8_t high_data, low_data;
@@ -199,56 +180,50 @@ int distance;
 soundDATATYPE Ultrasound;
 
 unsigned char uart_buff[4];
-unsigned char uart_temp[1];unsigned int uart_rx_cnt = 0;
+unsigned char uart_temp[1];
+unsigned int uart_rx_cnt = 0;
 
 void Ultrasound_thread_entry(void *parameter)
 {
     while (1)
     {
-     HAL_UART_Receive_IT(&huart5,(uint8_t *)uart_temp, 1);
-
+        // 使用中断接收UART5和UART4数据
+        HAL_UART_Receive_IT(&huart5, (uint8_t *)uart_temp, 1);
         HAL_UART_Receive_IT(&huart4, &sound_buf, 1);
 
-//        HAL_UART_Transmit(&huart4, &enable, sizeof(enable), 0xff);
-    HAL_UART_Transmit(&huart4, (uint8_t *)&enable, 1, 0xFFFF);
-
+        // 发送使能命令给超声波传感器
+        HAL_UART_Transmit(&huart4, (uint8_t *)&enable, 1, 0xFFFF);
 
         for (int i = 0; i < 8; i++)
         {
             if (sound_rx_buf[i] == 0xff)
             {
-//printf("%d %d %d %d\t\t",sound_rx_buf[i],sound_rx_buf[i+1],sound_rx_buf[i+2],sound_rx_buf[i+3]);
-
+                // 提取高位和低位数据字节
                 high_data = sound_rx_buf[i + 1];
                 low_data = sound_rx_buf[i + 2];
 
+                // 计算校验和
                 sound_sum = 0xff + high_data + low_data;
                 if (sound_sum == sound_rx_buf[i + 3])
                 {
+                    // 计算距离
                     distance = high_data * 256 + low_data;
                     Ultrasound.st_data.distance = (float)distance;
 
-//                    printf("distance=%d\n",distance);
                     break;
                 }
                 else
                 {
-                    printf("error");
-
+                    printf("错误");
                 }
-
             }
-
-
         }
 
-
         rt_thread_mdelay(50);
-
     }
 }
-//**************************************???7:PH??********************************/
 
+//************************************** 线程7: PH传感器 ********************************/
 extern ADC_HandleTypeDef hadc1;
 extern float volot[4];
 phDATATYPE ph;
@@ -257,250 +232,156 @@ extern float v;
 extern int adc_num;
 
 uint8_t i;
-float adcBuf[2];//???ADC
+float adcBuf[2]; // 存储ADC转换结果
 
 void PH_thread_entry(void *parameter)
 {
     while (1)
     {
-
-
         i = 0;
         while (i < 2)
         {
-            HAL_ADC_Start(&hadc1);//????ADC
-            HAL_ADC_PollForConversion(&hadc1, 10); //?????????????????????????????????λms.
-            //HAL_ADC_GetState(&hadc1)????ADC????HAL_ADC_STATE_REG_EOC???????????λ???????????á?
-            if (HAL_IS_BIT_SET(HAL_ADC_GetState(&hadc1), HAL_ADC_STATE_REG_EOC)) //?????ж?????????λ???????,HAL_ADC_STATE_REG_EOC???????????λ????????????
+            HAL_ADC_Start(&hadc1); // 启动ADC转换
+            HAL_ADC_PollForConversion(&hadc1, 10); // 等待转换完成，超时时间10毫秒
+
+            if (HAL_IS_BIT_SET(HAL_ADC_GetState(&hadc1), HAL_ADC_STATE_REG_EOC)) // 如果转换完成
             {
-                //???ADC?????????????12λ?????????????????????16λ?洢?????????????????????????????Χ?0~2^12-1,??0~4095.
+                // 获取ADC值并转换为电压
                 adcBuf[i] = HAL_ADC_GetValue(&hadc1) * 3.3 / 4096;
-//   printf("\nadc%d=%4.0d,???=%1.4f",i,adcBuf[i],adcBuf[i]*3.3f/65536);
                 i++;
             }
         }
 
         HAL_ADC_Stop(&hadc1);
 
-//        ph.st_data.ph = adcBuf[1]*-5.7541+16.654;
-				ph.st_data.ph = 6.5-adcBuf[1];
+        // 计算PH值
+        ph.st_data.ph = 6.5 - adcBuf[1];
+
+        // 使用多项式公式计算水质质量
         ph.st_data.quality = adcBuf[0];
-				ph.st_data.quality = ph.st_data.quality*ph.st_data.quality*ph.st_data.quality*66.71-127.93*ph.st_data.quality*ph.st_data.quality+428.7*ph.st_data.quality;
-
-//				ph.st_data.quality=jj++;
-				
-				//printf("v1=%f,v2=%f\n",adcBuf[0],adcBuf[1]);
-
+        ph.st_data.quality = ph.st_data.quality * ph.st_data.quality * ph.st_data.quality * 66.71 
+                             - 127.93 * ph.st_data.quality * ph.st_data.quality 
+                             + 428.7 * ph.st_data.quality;
 
         rt_thread_mdelay(50);
-
-
     }
 }
 
-
-
-//**************************************???8??????????********************************/
-
+//************************************** 线程8: 水质传感器 ********************************/
 void water_quality_thread_entry(void *parameter)
 {
     while (1)
     {
-
-
         rt_thread_mdelay(50);
-
     }
 }
 
-
-//**************************************???9?????????********************************/
-uint8_t lock=1;
+//************************************** 线程9: 运动控制 ********************************/
+uint8_t lock = 1;
 float jiaodu[10000];
-int ii=0;
+int ii = 0;
 
-			float angle_1,angle_2,angle_3,angle_4;
+float angle_1, angle_2, angle_3, angle_4;
 void motion_control_thread_entry(void *parameter)
 {
-				
-	
-	
     while (1)
     {
-			
+        #if old
+            // 使用旧的控制函数
+            control_motion(2 - PS_2.st_data.ch4, PS_2.st_data.ch3, 2 - PS_2.st_data.ch2);
+        #else
+            // 使用新的控制函数
+            // 根据PS_2数据调整控制参数
+            control_motion(1.01 - PS_2.st_data.ch4, PS_2.st_data.ch3 - 1, 1.01 - PS_2.st_data.ch2, PS_2.st_data.ch5 / 2);
 
+            // 计算舵机角度
+            angle_1 = 1500 - PS_2.st_data.yaw_2 * 1000 / 90;
+            angle_2 = 2500 - PS_2.st_data.roll_1 * 1000 / 90;
+            angle_3 = 1500 - (PS_2.st_data.roll_2 - PS_2.st_data.roll_1) * 1000 / 90;
+            angle_4 = 1500 + (PS_2.st_data.yaw_3 - PS_2.st_data.yaw_2) * 1000 / 90;
 
-# if old
-	
-			control_motion(2-PS_2.st_data.ch4,PS_2.st_data.ch3,2-PS_2.st_data.ch2);//??????????
-# else
-			control_motion(1.01-PS_2.st_data.ch4,PS_2.st_data.ch3-1,1.01-PS_2.st_data.ch2,PS_2.st_data.ch5/2);//???????????,?????????????????
+            // 限制角度到可接受的范围
+            my_limit(&angle_1);
+            my_limit(&angle_2);
+            my_limit(&angle_3);
+            my_limit(&angle_4);
 
-			angle_1=1500-PS_2.st_data.yaw_2*1000/90;
-			angle_2=2500-PS_2.st_data.roll_1*1000/90;
-			angle_3=1500-(PS_2.st_data.roll_2-PS_2.st_data.roll_1)*1000/90;
-			angle_4=1500+(PS_2.st_data.yaw_3-PS_2.st_data.yaw_2)*1000/90;
-			my_limit(&angle_1);
-			my_limit(&angle_2);
-			my_limit(&angle_3);
-			my_limit(&angle_4);
+            // 设置舵机的PWM比较值
+            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, angle_1);
+            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, angle_2);
+            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, angle_3);
+            __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, angle_4);
 
+            // 锁定机制
+            if ((lock == 0) && (PS_2.st_data.ch7 > 0.8))
+            {
+                lock = 1;
 
-			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1, angle_1);
-			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, angle_2);
-			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3, angle_3);
-			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, angle_4);
-					
-//					jiaodu[ii]=angle_1;ii++;
-//					if(ii>10000)
-//				ii=10000;
-//control_motion(   0.5  ,    0.5  ,     0.5 ,1  );
-//control_motion(   0.5  ,    -0.5  ,     0.5 ,1  );
+                // 启动PWM，控制htim3的通道
+                HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+                HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
+                HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
+                HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
 
-//control_motion(   -0.5   ,   0.5  ,     0.5 ,1   );
-//control_motion(   -0.5   ,   -0.5  ,     0.5 ,1   );
+                // 渐进增加TIM_CHANNEL_1的PWM比较值
+                for (int value = 1492; value <= 1532; value++)
+                {
+                    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, value);
+                }
 
-//control_motion(   -0.5   ,   0.1  ,     -0.5   ,1 );
-//control_motion(   0.5   ,   0.1  ,     -0.5   ,1 );
+                // 渐进减少TIM_CHANNEL_2和TIM_CHANNEL_3的PWM比较值
+                for (int value = 1500; value >= 1487; value--)
+                {
+                    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, value);
+                    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3, value);
+                }
 
+                HAL_Delay(3000); // 延迟3秒
+            }
 
-			if((lock==0)&&(PS_2.st_data.ch7>0.8))
-			{
-			
-				lock=1;
-				
-		HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
+            if ((lock == 1) && (PS_2.st_data.ch8 > 0.8))
+            {
+                lock = 0;
 
-				
-				
-			
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1492);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1491);
-	
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1493);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1494);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1495);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1496);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1497);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1498);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1499);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1500);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1501);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1502);
-		
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1504);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1503);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1502);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1501);			
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1506);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1508);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1510);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1512);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1514);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1516);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1518);			
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1520);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1524);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1526);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1528);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1530);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1,1532);
-	
-		
-		
-		
-				__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1500);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1499);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1498);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1497);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1496);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1495);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1494);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1493);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1492);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1491);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1490);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1489);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1488);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2,1487);
-		
-		
-		
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1500);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1499);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1498);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1497);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1496);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1495);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1494);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1493);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1492);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1491);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1490);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1489);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1488);
-		__HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_3,1487);
-		
-		
-		
-HAL_Delay(3000);			
-				
-				
+                // 停止htim3的通道PWM
+                HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_1);
+                HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_2);
+                HAL_TIM_PWM_Stop(&htim3, TIM_CHANNEL_3);
+            }
 
-
-					
-			}
-			
-			if((lock==1)&&(PS_2.st_data.ch8>0.8))
-			{
-			
-				lock=0;
-				
-							
-			HAL_TIM_PWM_Stop(&htim3,TIM_CHANNEL_1);			
-			HAL_TIM_PWM_Stop(&htim3,TIM_CHANNEL_2);		
-			HAL_TIM_PWM_Stop(&htim3,TIM_CHANNEL_3);							
-					
-			}			
-
-
-				        rt_thread_mdelay(10);
-
-# endif
+            rt_thread_mdelay(10);
+        #endif
     }
 }
-//***************************************?????????***********************************/
+
+//*************************************** UART接收回调 ***********************************/
 uint8_t rx_num = 0;
 uint8_t sound_i = 0;
-uint8_t buff=0;
-uint8_t cnt=0,buf_sum=0;
-    uint8_t sum = 0;
+uint8_t buff = 0;
+uint8_t cnt = 0, buf_sum = 0;
+uint8_t sum = 0;
 MS5837_DATATYPE ms5837;
 
-//extern unsigned int distance;
+// UART接收完成回调函数
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     uint8_t data = 0;
-    
-    // USART1 ???? PS2 ????
 
-    if (huart->Instance == USART1) // ???????????? USART1
+    // USART1接收PS2数据
+    if (huart->Instance == USART1) // 检查是否为USART1
     {
-        static uint8_t rxState1 = 0;       /**< ?????????? */
-        static uint8_t dataLen1 = 0;       /**< ??????? */
-        static uint8_t dataCnt1 = 0;       /**< ??????? */
-        static uint8_t sum1 = 0;           /**< У??? */
-        static uint8_t rxBuffer1[256];     /**< ????????? */
-        
-        // ?????????????
+        static uint8_t rxState1 = 0;       /**< 接收状态 */
+        static uint8_t dataLen1 = 0;       /**< 数据长度 */
+        static uint8_t dataCnt1 = 0;       /**< 数据计数 */
+        static uint8_t sum1 = 0;           /**< 校验和 */
+        static uint8_t rxBuffer1[256];     /**< 接收缓冲区 */
+
+        // 读取接收到的数据
         data = rxByte_USART1;
-        
+
         switch (rxState1)
         {
-            case 0: // ?????
+            case 0: // 等待帧头
                 if (data == 0xAA)
                 {
                     rxState1 = 1;
@@ -508,8 +389,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     sum1 = data;
                 }
                 break;
-            
-            case 1: // ???? ID
+
+            case 1: // 等待ID
                 rxBuffer1[1] = data;
                 sum1 += data;
                 if (data == 0x00)
@@ -518,11 +399,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 }
                 else
                 {
-                    rxState1 = 0; // ??Ч ID????????
+                    rxState1 = 0; // ID错误，重置
                 }
                 break;
-            
-            case 2: // ???????????
+
+            case 2: // 等待数据长度
                 rxBuffer1[2] = data;
                 if (data < 250)
                 {
@@ -533,13 +414,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                 }
                 else
                 {
-                    rxState1 = 0; // ??Ч???????????
+                    rxState1 = 0; // 数据长度无效，重置
                 }
                 break;
-            
-            case 3: // ????????
+
+            case 3: // 接收数据
                 rxBuffer1[3 + dataCnt1++] = data;
-                if ((dataCnt1 % 4) == 3) // ?????4??????е??4?????
+                if ((dataCnt1 % 4) == 3) // 每4字节（float数据）处理一次
                 {
                     sum1 += data;
                 }
@@ -548,45 +429,45 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
                     rxState1 = 4;
                 }
                 break;
-            
-            case 4: // ????У?????
+
+            case 4: // 等待校验和
                 rxBuffer1[3 + dataCnt1] = data;
-                rxState1 = 0; // ??????
-                if (sum1 == data) // У??????
+                rxState1 = 0; // 重置状态
+                if (sum1 == data) // 校验和验证通过
                 {
-                    // ???????????????? PS2Data ????
+                    // 将接收到的数据解析到PS2Data结构中
                     memcpy(&ps2Data.channel1, &rxBuffer1[3], sizeof(float));
                     memcpy(&ps2Data.channel2, &rxBuffer1[7], sizeof(float));
                     memcpy(&ps2Data.channel3, &rxBuffer1[11], sizeof(float));
                     memcpy(&ps2Data.channel4, &rxBuffer1[15], sizeof(float));
-                    // ?????????????????????
-                    
+
+                    // 处理接收到的数据
                     printf("ch1=%.2f, ch2=%.2f, ch3=%.2f, ch4=%.2f\n", 
                            ps2Data.channel1, ps2Data.channel2, ps2Data.channel3, ps2Data.channel4);
                 }
                 else
                 {
-                    printf("USART1 У?????\n");
+                    printf("USART1校验和错误\n");
                 }
-                sum1 = 0; // ????У???
+                sum1 = 0; // 重置校验和
                 break;
-            
+
             default:
-                rxState1 = 0; // ??????
+                rxState1 = 0; // 重置状态
                 break;
         }
-        
-        // ???????? UART1 ??????ж?
+
+        // 重新启动UART1接收中断
         HAL_UART_Receive_IT(&huart1, &rxByte_USART1, 1);
     }
-    
-    // UART5 ???? MS5837 ????
+
+    // UART5接收MS5837数据
     else if (huart->Instance == UART5)
     {
-        static u8 _data_len = 0, _cnt = 0;
-        static u8 rx_state = 0;
+        static uint8_t _data_len = 0, _cnt = 0;
+        static uint8_t rx_state = 0;
 
-        if (rx_state == 0 && data == 0x55)//????0x55
+        if (rx_state == 0 && data == 0x55) // 检查帧头0x55
         {
             rx_state = 1;
             head = data;
@@ -598,7 +479,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         }
         else if (rx_state == 2)
         {
-
             jy901b.byte[_cnt++] = data;
             if (_cnt >= 6)
             {
@@ -613,7 +493,4 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
         HAL_UART_Receive_IT(&huart5, &data, 1);
     }
-
 }
-	
-
