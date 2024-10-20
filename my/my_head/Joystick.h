@@ -1,8 +1,10 @@
 /**
- * @struct Joystick data structure
+ * @struct 手柄数据结构体
  *
- * @note left_x, left_y, right_x, right_y: the x and y coordinates of the left and right joysticks, the range is -100~100
- * @note A, B, X, Y: the status of the A, B, X, Y buttons, 0 is not pressed, 1 is pressed
+ * @note left_x, left_y, right_x, right_y: 左右摇杆的x和y坐标，范围为-100~100
+ * @note A, B, X, Y: A、B、X、Y按钮的状态，0表示未按下，1表示按下
+ * 
+ * @note 数据以以下格式发送：0xAA left_x left_y right_x right_y A B X Y SUM
  */
 typedef struct
 {
@@ -16,11 +18,12 @@ typedef struct
     int Y;
 } JoystickDataType;
 
-JoystickDataType phraseJoystickData(const unsigned char data)
-{
-    static unsigned char status = 0;
-    static JoystickDataType joystickData;
-    if (data == 0xAA)
-    {
-    }
-}
+/**
+ * @brief 解析手柄数据
+ * 
+ * @param data 每次接收到的数据
+ * @param joystick_data 手柄数据结构体指针（用于存储解析后的数据）
+ */
+void phraseJoystickData(const unsigned char data, JoystickDataType *joystick_data);
+
+extern JoystickDataType joystick_data;

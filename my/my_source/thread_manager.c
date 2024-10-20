@@ -10,6 +10,7 @@
 #include "usart.h"
 #include "my_adc.h"
 #include "motion_control.h"
+#include "Joystick.h"
 
 // 全局变量，用于存储MPU6050数据
 float pitch_1, roll_1, yaw_1;           // 俯仰角、横滚角、偏航角
@@ -146,18 +147,7 @@ uint8_t data = 0;
 
 void data_receive_thread_entry(void *parameter)
 {
-    while (1)
-    {
-        #if old
-            // 使用中断接收140字节数据，通过UART1
-            HAL_UART_Receive_IT(&huart1, rx_buf, 140);
-        #else
-            // 使用中断接收一个字节数据，通过UART1
-            HAL_UART_Receive_IT(&huart1, &data, 1);
-        #endif
-
-        rt_thread_mdelay(20);
-    }
+    HAL_UART_Receive_IT(&huart1, &data, 1);
 }
 
 //************************************** 线程5: 数据发送 ********************************/
@@ -370,98 +360,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     // USART1接收PS2数据
     if (huart->Instance == USART1) // 检查是否为USART1
     {
-        static uint8_t rxState1 = 0;       /**< 接收状态 */
-        static uint8_t dataLen1 = 0;       /**< 数据长度 */
-        static uint8_t dataCnt1 = 0;       /**< 数据计数 */
-        static uint8_t sum1 = 0;           /**< 校验和 */
-        static uint8_t rxBuffer1[256];     /**< 接收缓冲区 */
-
-        // 读取接收到的数据
-        data = rxByte_USART1;
-
-        switch (rxState1)
-        {
-            case 0: // 等待帧头
-                if (data == 0xAA)
-                {
-                    rxState1 = 1;
-                    rxBuffer1[0] = data;
-                    sum1 = data;
-                }
-                break;
-
-            case 1: // 等待ID
-                rxBuffer1[1] = data;
-                sum1 += data;
-                if (data == 0x00)
-                {
-                    rxState1 = 2;
-                }
-                else
-                {
-                    rxState1 = 0; // ID错误，重置
-                }
-                break;
-
-            case 2: // 等待数据长度
-                rxBuffer1[2] = data;
-                if (data < 250)
-                {
-                    dataLen1 = data;
-                    dataCnt1 = 0;
-                    sum1 += data;
-                    rxState1 = 3;
-                }
-                else
-                {
-                    rxState1 = 0; // 数据长度无效，重置
-                }
-                break;
-
-            case 3: // 接收数据
-                rxBuffer1[3 + dataCnt1++] = data;
-                if ((dataCnt1 % 4) == 3) // 每4字节（float数据）处理一次
-                {
-                    sum1 += data;
-                }
-                if (--dataLen1 == 0)
-                {
-                    rxState1 = 4;
-                }
-                break;
-
-            case 4: // 等待校验和
-                rxBuffer1[3 + dataCnt1] = data;
-                rxState1 = 0; // 重置状态
-                if (sum1 == data) // 校验和验证通过
-                {
-                    // 将接收到的数据解析到PS2Data结构中
-                    memcpy(&ps2Data.channel1, &rxBuffer1[3], sizeof(float));
-                    memcpy(&ps2Data.channel2, &rxBuffer1[7], sizeof(float));
-                    memcpy(&ps2Data.channel3, &rxBuffer1[11], sizeof(float));
-                    memcpy(&ps2Data.channel4, &rxBuffer1[15], sizeof(float));
-
-                    // 处理接收到的数据
-                    printf("ch1=%.2f, ch2=%.2f, ch3=%.2f, ch4=%.2f\n", 
-                           ps2Data.channel1, ps2Data.channel2, ps2Data.channel3, ps2Data.channel4);
-                }
-                else
-                {
-                    printf("USART1校验和错误\n");
-                }
-                sum1 = 0; // 重置校验和
-                break;
-
-            default:
-                rxState1 = 0; // 重置状态
-                break;
-        }
-
+        phraseJoystickData(data, &joystick_data); // 解析PS2数据
         // 重新启动UART1接收中断
-        HAL_UART_Receive_IT(&huart1, &rxByte_USART1, 1);
+        HAL_UART_Receive_IT(&huart1, &data, 1);
     }
 
-    // UART5接收MS5837数据
+    // UART5接收IMU数据
     else if (huart->Instance == UART5)
     {
         static uint8_t _data_len = 0, _cnt = 0;

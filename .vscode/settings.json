@@ -3,7 +3,8 @@
         "*.json": "jsonc",
         "stm32_lock.h": "c",
         "main.h": "c",
-        "compare": "cpp"
+        "compare": "cpp",
+        "*.tcc": "c"
     },
     "C_Cpp.default.compilerPath": "e:\\vcpkg\\downloads\\tools\\perl\\5.38.0.1\\c\\bin\\x86_64-w64-mingw32-gcc.exe",
     "files.encoding": "gb2312"
