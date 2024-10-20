@@ -212,13 +212,13 @@ DT_TX_P_Init();
 //}
 ////		
 HAL_Delay(3000);
-			  __HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1,1500);
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_1,1500);
 	
 		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2,2500);
 	
 		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_3,1500);
 	
-			__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4,1500);
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4,1500);
 			HAL_Delay(1000);
 			
 /*****************************************************************************          线程相关             *************************************/
@@ -369,7 +369,7 @@ rt_thread_init(&motion_control_thread,                  /* 线程控制块 */
             2,                            /* 线程的优先级 */      
             20);   
 
-rt_thread_startup(&motion_control_thread);
+ rt_thread_startup(&motion_control_thread);
 
 /*************************************************************************************************************************************************/
 

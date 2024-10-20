@@ -17,6 +17,7 @@ extern MPU6050DATATYPE mpu6050;
 extern soundDATATYPE Ultrasound;
 extern phDATATYPE ph;
 extern MS5837_DATATYPE ms5837;
+extern JY901B_DataType jy901b;
 int fputc(int ch, FILE *f)
 {
     HAL_UART_Transmit(&huart2, (uint8_t *)&ch, 1, 0xFFFF);
@@ -56,7 +57,8 @@ u8 DT_TX_Buffer_SIZE[] =
     16 + 4 //0x01
     , 4+4 //0x02
     , 8+4  //0x03
-	,8+4
+	,8+4//0x04
+	,4+6//0x05
 };
 
 u8 *p[sizeof(DT_TX_Buffer_SIZE)];
@@ -307,11 +309,6 @@ static void Add_Send_Data(u8 ID, u8 Tx_buffer[])
 
     switch (ID)
     {
-
-
-
-
-
     case 0x01:
         num++;
         for (len = 0; len < 16; len++)
@@ -356,6 +353,16 @@ static void Add_Send_Data(u8 ID, u8 Tx_buffer[])
 //printf("sum=%d",sum);
         }
         break;
+				 case 0x05://0x05就是jy901b的数据
+        num++;
+        for (len = 0; len < 5; len++)
+        {
+            Tx_buffer[num++] = jy901b.byte[len];
+            if ((len + 1) % 2 == 0)
+                sum += jy901b.byte[len];
+//printf("sum=%d",sum);
+        }
+        break;
 
     }
     Tx_buffer[2] = len;
@@ -386,8 +393,9 @@ void Send_Data_Task()
     Send_Data(0x02);
     Send_Data(0x03);
     Send_Data(0x04);
-
-
+		Send_Data(0x05);
+//		double x[3]={((jy901b.byte[1]<<8)|jy901b.byte[0])/32768*180,((jy901b.byte[3]<<8)|jy901b.byte[2])/32768*180,((jy901b.byte[5]<<8)|jy901b.byte[4])/32768*180};
+//		   int a= HAL_UART_Transmit(&huart1, x, 6, 100);
 
 
 }
